@@ -1,0 +1,26 @@
+<!-- product_detail.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Detail</title>
+</head>
+<body>
+    <h2>{{ product.name }}</h2>
+    <p>Brand: {{ product.brand }}</p>
+    <p>Price: Rs.{{ product.price }}</p>
+    <p>Offer: Rs.{{ product.offer }}</p>
+    <p>Quantity: {{ product.quantity }}</p>
+    <p>Description: {{ product.description }}</p>
+
+    <h3>Price History</h3>
+    <ul>
+        {% for entry in price_history %}
+            <li>{{ entry.timestamp }} - Price: Rs.{{ entry.price }}, Offer: Rs.{{ entry.offer }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
