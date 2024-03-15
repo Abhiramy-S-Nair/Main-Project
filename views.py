@@ -1708,73 +1708,169 @@ def products_users(request):
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
-from .models import VendorProduct, ShoppingCart
+from .models import VendorProduct
 
 def user_productdetails(request, pk):
     product = get_object_or_404(VendorProduct, pk=pk)
 
-    if request.method == 'POST':
-        quantity = int(request.POST.get('quantity', 1))
+   # if request.method == 'POST':
+      #  quantity = int(request.POST.get('quantity', 1))
         
-        if quantity <= 0:
-            messages.error(request, 'Invalid quantity. Please select a positive number.')
-        else:
-            cart_entry, created = ShoppingCart.objects.get_or_create(
-                user=request.user,
-                product=product,
-                defaults={'quantity': quantity}
-            )
+       # if quantity <= 0:
+            #messages.error(request, 'Invalid quantity. Please select a positive number.')
+        #else:
+           # cart_entry, created = ShoppingCart.objects.get_or_create(
+              #  user=request.user,
+              #  product=product,
+               # defaults={'quantity': quantity}
+            #)
 
-            if not created:
-                cart_entry.quantity += quantity
-                cart_entry.save()
+            #if not created:
+                #cart_entry.quantity += quantity
+                #cart_entry.save()
 
-            messages.success(request, f'Added {quantity} {product.name}(s) to your cart.')
+            #messages.success(request, f'Added {quantity} {product.name}(s) to your cart.')
 
             # Redirect to the same product details page after adding to cart
-            return redirect('user_productdetails', pk=pk)
+            #return redirect('user_productdetails', pk=pk)
 
     return render(request, 'user_productdetails.html', {'product': product})
 
 from django.shortcuts import redirect
 from django.contrib import messages
-from .models import ShoppingCart
+#from .models import ShoppingCart
 
-def add_to_cart(request, pk):
-    product = get_object_or_404(VendorProduct, pk=pk)
+#def add_to_cart(request, pk):
+   # product = get_object_or_404(VendorProduct, pk=pk)
 
-    if request.method == 'POST':
-        quantity = int(request.POST.get('quantity', 1))
+    #if request.method == 'POST':
+        #quantity = int(request.POST.get('quantity', 1))
         
         # Check if the quantity is valid
-        if quantity <= 0:
-            messages.error(request, 'Invalid quantity. Please select a positive number.')
-        else:
+        #if quantity <= 0:
+            #messages.error(request, 'Invalid quantity. Please select a positive number.')
+        #else:
             # Create or update the shopping cart entry
-            cart_entry, created = ShoppingCart.objects.get_or_create(
-                user=request.user,
-                product=product,
-                defaults={'quantity': quantity}
-            )
+            #cart_entry, created = ShoppingCart.objects.get_or_create(
+             #   user=request.user,
+              #  product=product,
+               # defaults={'quantity': quantity}
+            #)
 
-            if not created:
-                cart_entry.quantity += quantity
-                cart_entry.save()
+           # if not created:
+                #cart_entry.quantity += quantity
+                #cart_entry.save()
 
-            messages.success(request, f'Added {quantity} {product.name}(s) to your cart.')
+            #messages.success(request, f'Added {quantity} {product.name}(s) to your cart.')
 
-    return redirect('user_productdetails', pk=pk)
+   # return redirect('user_productdetails', pk=pk)
 
-@login_required
+#@login_required
+#def view_cart(request):
+    #cart_entries = ShoppingCart.objects.filter(user=request.user)
+   # return render(request, 'cart.html', {'cart_entries': cart_entries})
+
+#@login_required
+#def remove_from_cart(request, cart_entry_id):
+    #cart_entry = get_object_or_404(ShoppingCart, id=cart_entry_id, user=request.user)
+  #  cart_entry.delete()
+    #return redirect('view_cart')
+#@login_required
+#def update_cart_entry(request, cart_entry_id):
+ #   cart_entry = get_object_or_404(ShoppingCart, id=cart_entry_id, user=request.user)
+
+  #  if request.method == 'POST':
+   #     new_quantity = int(request.POST.get('quantity', 1))
+
+        # Check if the new quantity is valid
+       # if new_quantity <= 0:
+          #  messages.error(request, 'Invalid quantity. Please select a positive number.')
+       # else:
+           # cart_entry.quantity = new_quantity
+           # cart_entry.save()
+           # messages.success(request, f'Updated {cart_entry.product.name} quantity to {new_quantity}.')
+
+    #return redirect('view_cart')
+from .models import VendorProduct, Cart, CartItem
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+
+@login_required(login_url='login')
+def add_to_cart(request, product_id):
+    product = VendorProduct.objects.get(pk=product_id)
+    cart, created = Cart.objects.get_or_create(user=request.user)
+    cart_item, item_created = CartItem.objects.get_or_create(cart=cart, product=product)
+    
+    if not item_created:
+        cart_item.quantity += 1
+        cart_item.save()
+    
+    return redirect('user_productdetails', pk=product.pk)
+@login_required(login_url='login')
+def remove_from_cart(request, product_id):
+    product = VendorProduct.objects.get(pk=product_id)
+    cart = Cart.objects.get(user=request.user)
+    try:
+        cart_item = cart.cartitem_set.get(product=product)
+        if cart_item.quantity >= 1:
+             cart_item.delete()
+    except CartItem.DoesNotExist:
+        pass
+    
+    return redirect('cart')
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from .models import CartItem
+
+@login_required(login_url='login')
 def view_cart(request):
-    cart_entries = ShoppingCart.objects.filter(user=request.user)
-    return render(request, 'cart.html', {'cart_entries': cart_entries})
+    cart = request.user.cart
+    cart_items = CartItem.objects.filter(cart=cart)
+    
+    # Calculate total amount
+    total_amount = sum(item.product.offer * item.quantity for item in cart_items)
 
-@login_required
-def remove_from_cart(request, cart_entry_id):
-    cart_entry = get_object_or_404(ShoppingCart, id=cart_entry_id, user=request.user)
-    cart_entry.delete()
-    return redirect('view_cart')
+    return render(request, 'cart.html', {'cart_items': cart_items, 'total_amount': total_amount})
+
+
+@login_required(login_url='login')
+def increase_cart_item(request, product_id):
+    product = VendorProduct.objects.get(pk=product_id)
+    cart = request.user.cart
+    cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product)
+
+    cart_item.quantity += 1
+    cart_item.save()
+
+    return redirect('cart')
+
+@login_required(login_url='login')
+def decrease_cart_item(request, product_id):
+    product = VendorProduct.objects.get(pk=product_id)
+    cart = request.user.cart
+    cart_item = cart.cartitem_set.get(product=product)
+
+    if cart_item.quantity > 1:
+        cart_item.quantity -= 1
+        cart_item.save()
+    else:
+        cart_item.delete()
+
+    return redirect('cart')
+@login_required(login_url='login')
+def fetch_cart_count(request):
+    cart_count = 0
+    if request.user.is_authenticated:
+        cart = request.user.cart
+        cart_count = CartItem.objects.filter(cart=cart).count()
+    return JsonResponse({'cart_count': cart_count})
+def get_cart_count(request):
+    if request.user.is_authenticated:
+        cart_items = CartItem.objects.filter(cart=request.user.cart)
+        cart_count = cart_items.count()
+    else:
+        cart_count = 0
+    return cart_count
 
 # views.py
 from django.shortcuts import render, redirect
@@ -1848,11 +1944,58 @@ def restock_product(request, pk):
     return render(request, 'restock_product.html', {'product': product})
 
 # views.py
+# from django.shortcuts import render, redirect
+# from .models import DeliveryAddress, City, District
+# def add_delivery_address(request, pk):
+#     product = VendorProduct.objects.get(pk=pk)
+
+#     if request.method == 'POST':
+#         # Retrieve form data from the POST request
+#         name = request.POST.get('name')
+#         phone_number = request.POST.get('phone_number')
+#         pincode = request.POST.get('pincode')
+#         locality = request.POST.get('locality')
+#         address = request.POST.get('address')
+#         city_id = request.POST.get('city')
+#         district_id = request.POST.get('district')
+#         landmark = request.POST.get('landmark', '')
+#         alternate_phone_number = request.POST.get('alternate_phone_number', '')
+#         address_type = request.POST.get('address_type')
+        
+
+#         # Get City and District objects based on the selected IDs
+#         city = City.objects.get(City_ID=city_id)
+#         district = District.objects.get(district_id=district_id)
+
+#         # Create DeliveryAddress object
+#         delivery_address = DeliveryAddress.objects.create(
+#             user=request.user,  # Assuming you have a logged-in user
+#             product=product,
+#             name=name,
+#             phone_number=phone_number,
+#             pincode=pincode,
+#             locality=locality,
+#             address=address,
+#             city=city,
+#             district=district,
+#             landmark=landmark,
+#             alternate_phone_number=alternate_phone_number,
+#             address_type=address_type,
+           
+#         )
+
+#         return redirect('index')  # Redirect to the address list view
+
+#     # Retrieve all cities and districts to populate the dropdowns
+#     cities = City.objects.all()
+#     districts = District.objects.all()
+
+#     return render(request, 'delivery_address_form.html', {'product': product, 'cities': cities, 'districts': districts})
+
 from django.shortcuts import render, redirect
 from .models import DeliveryAddress, City, District
-def add_delivery_address(request, pk):
-    product = VendorProduct.objects.get(pk=pk)
 
+def add_delivery_address(request):
     if request.method == 'POST':
         # Retrieve form data from the POST request
         name = request.POST.get('name')
@@ -1865,7 +2008,6 @@ def add_delivery_address(request, pk):
         landmark = request.POST.get('landmark', '')
         alternate_phone_number = request.POST.get('alternate_phone_number', '')
         address_type = request.POST.get('address_type')
-        
 
         # Get City and District objects based on the selected IDs
         city = City.objects.get(City_ID=city_id)
@@ -1874,7 +2016,6 @@ def add_delivery_address(request, pk):
         # Create DeliveryAddress object
         delivery_address = DeliveryAddress.objects.create(
             user=request.user,  # Assuming you have a logged-in user
-            product=product,
             name=name,
             phone_number=phone_number,
             pincode=pincode,
@@ -1885,7 +2026,6 @@ def add_delivery_address(request, pk):
             landmark=landmark,
             alternate_phone_number=alternate_phone_number,
             address_type=address_type,
-           
         )
 
         return redirect('index')  # Redirect to the address list view
@@ -1894,7 +2034,16 @@ def add_delivery_address(request, pk):
     cities = City.objects.all()
     districts = District.objects.all()
 
-    return render(request, 'delivery_address_form.html', {'product': product, 'cities': cities, 'districts': districts})
+    return render(request, 'delivery_address_form.html', {'cities': cities, 'districts': districts})
+from django.shortcuts import render
+from .models import DeliveryAddress
+
+from django.db.models import Max
+
+def user_delivery_address(request):
+    # Retrieve the last added delivery address associated with the logged-in user
+    last_delivery_address = DeliveryAddress.objects.filter(user=request.user).order_by('-id').first()
+    return render(request, 'user_delivery_address.html', {'delivery_address': last_delivery_address})
 
 
 def buy_now(request, pk):
@@ -1910,3 +2059,211 @@ def product_section_view(request):
     }
     
     return render(request, 'indexecommerce.html', context)
+
+from .models import  Cart, CartItem, ProductOrder, OrderItem
+from django.http import JsonResponse
+from django.conf import settings
+import razorpay
+import json
+from django.views.decorators.csrf import csrf_exempt
+
+#@csrf_exempt
+#def create_order(request):
+   # if request.method == 'POST':
+      #  user = request.user
+        #cart = user.cart
+
+        #cart_items = CartItem.objects.filter(cart=cart)
+        #total_amount = sum(item.product.price * item.quantity for item in cart_items)
+
+        #try:
+          #  order = ProductOrder.objects.create(user=user, total_amount=total_amount)
+           # for cart_item in cart_items:
+             #   OrderItem.objects.create(
+                  #  order=order,
+                  #  product=cart_item.product,
+                    #quantity=cart_item.quantity,
+                    #item_total=cart_item.product.price * cart_item.quantity
+               # )
+
+            #client = razorpay.Client(auth=(settings.RAZOR_KEY_ID, settings.RAZOR_KEY_SECRET))
+            #payment_data = {
+                #'amount': int(total_amount * 100),
+                #'currency': 'INR',
+              #  'receipt': f'order_{order.id}',
+                #'payment_capture': '1'
+           # }
+#             orderData = client.order.create(data=payment_data)
+#             order.payment_id = orderData['id']
+#             order.save()
+
+#             return JsonResponse({'order_id': orderData['id']})
+        
+#         except Exception as e:
+#             print(str(e))
+#             return JsonResponse({'error': 'An error occurred. Please try again.'}, status=500)
+# from django.contrib.auth import get_user_model
+
+# User = get_user_model()  # Get the user model
+from django.shortcuts import get_object_or_404
+@csrf_exempt
+@login_required  # Apply login_required decorator to ensure the user is authenticated
+
+
+def create_order(request):
+    if request.method == 'POST':
+        user = request.user
+        # Use get_or_create to get the user's cart or create a new one if it doesn't exist
+        cart, created= Cart.objects.get_or_create(user=user)
+
+        cart_items = CartItem.objects.filter(cart=cart)
+        total_amount = sum(item.product.price * item.quantity for item in cart_items)
+
+        try:
+            order = ProductOrder.objects.create(user=user, total_amount=total_amount)
+            for cart_item in cart_items:
+                OrderItem.objects.create(
+                    order=order,
+                    product=cart_item.product,
+                    quantity=cart_item.quantity,
+                    item_total=cart_item.product.price * cart_item.quantity
+                )
+
+            client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+            payment_data = {
+                'amount': int(total_amount * 100),
+                'currency': 'INR',
+                'receipt': f'order_{order.id}',
+                'payment_capture': '1'
+            }
+            order_data = client.order.create(data=payment_data)
+            order.payment_id = order_data['id']
+            order.save()
+
+            return JsonResponse({'order_id': order_data['id']})
+        
+        except Exception as e:
+            print(str(e))
+            return JsonResponse({'error': 'An error occurred. Please try again.'}, status=500)
+    else:
+        return JsonResponse({'error': 'Invalid request method.'}, status=400)
+
+def checkout(request):
+    cart_items = CartItem.objects.filter(cart=request.user.cart)
+    total_amount = sum(item.product.price * item.quantity for item in cart_items)
+    print(total_amount)
+    cart_count = get_cart_count(request)
+    
+    # Access the user's email and full name using request.user
+    email = request.user.email
+    username = request.user.username
+
+    context = {
+        'cart_count': cart_count,
+        'cart_items': cart_items,
+        'total_amount': total_amount,
+        'email': email,
+        'username': username
+    }
+    return render(request, 'checkout.html', context)
+@csrf_exempt
+def handle_payment(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        razorpay_order_id = data.get('order_id')
+        payment_id = data.get('payment_id')
+
+        try:
+            order = ProductOrder.objects.get(payment_id=razorpay_order_id)
+
+            client = razorpay.Client(auth=(settings.RAZOR_KEY_ID, settings.RAZOR_KEY_SECRET))
+            payment = client.payment.fetch(payment_id)
+
+            if payment['status'] == 'captured':
+                order.payment_status = True
+                order.save()
+                #user = request.user
+                #user.cart.cartitem_set.all().delete()
+                return JsonResponse({'message': 'Payment successful'})
+            else:
+                return JsonResponse({'message': 'Payment failed'})
+
+        except ProductOrder.DoesNotExist:
+            return JsonResponse({'message': 'Invalid Order ID'})
+        except Exception as e:
+
+            print(str(e))
+            return JsonResponse({'message': 'Server error, please try again later.'})
+
+
+def update_address(request):
+    if request.method == 'POST':
+        # Logic to update the address goes here
+        # You can access form data using request.POST
+        # Example: name = request.POST.get('name')
+        return JsonResponse({'message': 'Address updated successfully'})
+    else:
+        return JsonResponse({'message': 'Invalid request method'})
+    
+# views.py
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from .models import DeliveryAddress
+
+@login_required
+def update_delivery_address_page(request):
+    # Fetch the user's delivery address if it exists
+    delivery_address = DeliveryAddress.objects.filter(user=request.user).first()
+    context = {'delivery_address': delivery_address}
+    return render(request, 'update_delivery_address.html', context)
+
+@login_required
+def update_delivery_address(request):
+    if request.method == 'POST':
+        # Retrieve form data from POST request
+        name = request.POST.get('name')
+        phone_number = request.POST.get('phone_number')
+        pincode = request.POST.get('pincode')
+        locality = request.POST.get('locality')
+        address = request.POST.get('address')
+        city = request.POST.get('city')
+        district = request.POST.get('district')
+        landmark = request.POST.get('landmark')
+        alternate_phone_number = request.POST.get('alternate_phone_number')
+        address_type = request.POST.get('address_type')
+
+        # Check if delivery address already exists for the user
+        delivery_address = DeliveryAddress.objects.filter(user=request.user).first()
+
+        if delivery_address:
+            # Update existing delivery address
+            delivery_address.name = name
+            delivery_address.phone_number = phone_number
+            delivery_address.pincode = pincode
+            delivery_address.locality = locality
+            delivery_address.address = address
+            delivery_address.city = city
+            delivery_address.district = district
+            delivery_address.landmark = landmark
+            delivery_address.alternate_phone_number = alternate_phone_number
+            delivery_address.address_type = address_type
+            delivery_address.save()
+        else:
+            # Create new delivery address
+            DeliveryAddress.objects.create(
+                user=request.user,
+                name=name,
+                phone_number=phone_number,
+                pincode=pincode,
+                locality=locality,
+                address=address,
+                city=city,
+                district=district,
+                landmark=landmark,
+                alternate_phone_number=alternate_phone_number,
+                address_type=address_type
+            )
+
+        return redirect('update_delivery_address_page')
+    else:
+        return redirect('update_delivery_address_page')
