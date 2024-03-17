@@ -1,4 +1,4 @@
-<!-- cart.html -->
+<!-- cart.html 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -133,6 +133,42 @@
         .buy-now-btn:hover {
             background-color: #0056b3;
         }
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .quantity-container {
+            display: flex;
+            align-items: center;
+        }
+
+        .quantity-input {
+            width: 50px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        .quantity-btn {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease-in-out;
+            margin-top: 10px;
+        }
+
+        .quantity-btn:hover {
+            background-color: #0056b3;
+        }
         
     </style>
 </head>
@@ -141,8 +177,8 @@
         <a href="http://127.0.0.1:8000/services.html">Home</a>
         <a href="http://127.0.0.1:8000/products_users.html">Products</a>
         <a href="about.html">About Us</a>
-        <a href="{% url 'view_cart' %}">Cart</a>
-        <!-- Add more links as needed -->
+        
+         Add more links as needed 
     </nav><br><br>
    
     <ul>
@@ -152,6 +188,15 @@
                 <img src="{{ cart_entry.product.image.url }}" alt="{{ cart_entry.product.name }} Image">
                 <span>Price: Rs.{{ cart_entry.product.offer }}</span>
                 <span>Quantity: {{ cart_entry.quantity }}</span>
+                <form method="post" action="{% url 'update_cart_entry' cart_entry.id %}">
+                    {% csrf_token %}
+                    <div class="quantity-container">
+                        <button type="button" class="quantity-btn" onclick="decreaseQuantity('{{ cart_entry.id }}')">-</button>
+                        <input class="quantity-input" id="quantityInput{{ cart_entry.id }}" type="number" name="quantity" value="{{ cart_entry.quantity }}" min="1" required>
+                        <button type="button" class="quantity-btn" onclick="increaseQuantity('{{ cart_entry.id }}')">+</button>
+                    </div>
+                    <button class="update-btn" type="submit">Update Quantity</button>
+                </form>
                 <form method="post" action="{% url 'remove_from_cart' cart_entry.id %}">
                     {% csrf_token %}
                     <button class="remove-btn" type="submit">Remove</button>
@@ -164,5 +209,63 @@
             </li>
         {% endfor %}
     </ul>
+    <script>
+        function decreaseQuantity(cartEntryId) {
+            const quantityInput = document.querySelector(`#quantityInput${cartEntryId}`);
+            if (quantityInput.value > 1) {
+                quantityInput.value = parseInt(quantityInput.value) - 1;
+            }
+        }
+
+        function increaseQuantity(cartEntryId) {
+            const quantityInput = document.querySelector(`#quantityInput${cartEntryId}`);
+            quantityInput.value = parseInt(quantityInput.value) + 1;
+        }
+    </script> 
 </body>
-</html>
+</html>-->
+
+
+{% load static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/cart.css' %}">
+<div class="container">
+    <div class="cart-header">
+        <h1>Your Cart</h1>
+    </div>
+    <ul>
+        {% for item in cart_items %}
+        <li class="cart-item">
+            <div class="cart-item-details">
+                <img src="{{ item.product.image.url }}" alt="{{ item.product.name }} Image" class="cart-item-image"> <!-- Add this line to display the image --><br>
+                <div class="cart-item-name">{{ item.product.name }}</div>
+                <form action="{% url 'remove-from-cart' item.product.id %}" method="post">
+                    {% csrf_token %}
+                   <div> <button class="remove-from-cart-btn" type="submit">Remove</button></div>
+                </form>
+            </div>
+            <div class="cart-item-quantity">
+                <form action="{% url 'increase-cart-item' item.product.id %}" method="post">
+                    {% csrf_token %}
+                    <button class="quantity-btn increase-quantity" type="submit">+</button>
+                </form>
+                <span class="item-quantity">{{ item.quantity }}</span>
+                <form action="{% url 'decrease-cart-item' item.product.id %}" method="post">
+                    {% csrf_token %}
+                    <button class="quantity-btn decrease-quantity" type="submit">-</button>
+                </form>
+            </div>
+            <div class="cart-item-price" data-price="{{ item.product.offer }}">
+                Rs.{{ item.product.offer }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    <p class="total-price-data">Total amount: Rs. <span id="total-price">{{ total_amount }}</span></p>
+    <a class="continue-shopping-link" href="{% url 'products_users' %}">Continue Shopping</a>
+
+    <a class="checkout-button" href="http://127.0.0.1:8000/cart/checkout/">Checkout</a>
+</div>
+<script src="{% static 'js/cart.js' %}"></script>
+{% endblock %}
+
