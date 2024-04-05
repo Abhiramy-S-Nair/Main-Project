@@ -1,8 +1,10 @@
+from datetime import timezone
+from urllib import request
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.contrib.auth import logout as auth_logout
 from django.http import HttpResponse
-from .models import CustomUser
+from .models import CustomUser, DeliveryBoyAssignment
 import razorpay
 from django.contrib import messages
 from django.http import JsonResponse
@@ -31,7 +33,7 @@ from .models import  ServiceRequest
 from .forms import CleaningRequestForm
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
-
+import requests
 
 from decimal import Decimal
 from django.shortcuts import render
@@ -119,6 +121,9 @@ def request_worker_signup(request):
 
 def userprofile(request):
     return render(request, 'userprofile.html')
+
+def deliveryboyprofile(request):
+    return render(request, 'deliveryboyprofile.html')
 
 def vendor_profile(request):
     return render(request, 'vendor_profile.html')
@@ -441,7 +446,7 @@ def edit_profile(request):
         form = EditProfileForm(request.POST, instance=request.user)
         if form.is_valid():
             form.save()  # This will update the user's data in the database
-            return redirect('userprofile')  # Redirect to the user's profile page
+            return redirect('index')  # Redirect to the user's profile page
     else:
         form = EditProfileForm(instance=request.user)
 
@@ -1061,7 +1066,7 @@ def apply_leave(request):
             leave_application.user = request.user
             leave_application.save()
 
-            return redirect('workerdashboard')  # Redirect to the dashboard after submission
+            return redirect('deliveryboydashboard')  # Redirect to the dashboard after submission
     else:
         form = LeaveApplicationForm()
 
@@ -1448,7 +1453,7 @@ def deliveryboy_signup(request):
 
                 # Redirect to the signup page to display the message
 
-                return redirect('delivery_recruitment')
+                return redirect('index')
         else:
             messages.error(request, "Please fill in all the required fields.")
     
@@ -2117,7 +2122,7 @@ def create_order(request):
         cart, created= Cart.objects.get_or_create(user=user)
 
         cart_items = CartItem.objects.filter(cart=cart)
-        total_amount = sum(item.product.price * item.quantity for item in cart_items)
+        total_amount = sum(item.product.offer * item.quantity for item in cart_items)
 
         try:
             order = ProductOrder.objects.create(user=user, total_amount=total_amount)
@@ -2126,7 +2131,7 @@ def create_order(request):
                     order=order,
                     product=cart_item.product,
                     quantity=cart_item.quantity,
-                    item_total=cart_item.product.price * cart_item.quantity
+                    item_total=cart_item.product.offer * cart_item.quantity
                 )
 
             client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
@@ -2147,13 +2152,13 @@ def create_order(request):
             return JsonResponse({'error': 'An error occurred. Please try again.'}, status=500)
     else:
         return JsonResponse({'error': 'Invalid request method.'}, status=400)
-
+from .models import ProductOrder
+@login_required
 def checkout(request):
     cart_items = CartItem.objects.filter(cart=request.user.cart)
-    total_amount = sum(item.product.price * item.quantity for item in cart_items)
+    total_amount = sum(item.product.offer * item.quantity for item in cart_items)
     print(total_amount)
     cart_count = get_cart_count(request)
-    
     # Access the user's email and full name using request.user
     email = request.user.email
     username = request.user.username
@@ -2166,6 +2171,15 @@ def checkout(request):
         'username': username
     }
     return render(request, 'checkout.html', context)
+
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+from django.conf import settings
+from .models import ProductOrder
+
 @csrf_exempt
 def handle_payment(request):
     if request.method == 'POST':
@@ -2174,27 +2188,31 @@ def handle_payment(request):
         payment_id = data.get('payment_id')
 
         try:
+            # Retrieve the ProductOrder object based on the razorpay_order_id
             order = ProductOrder.objects.get(payment_id=razorpay_order_id)
 
+            # Fetch payment details from Razorpay
             client = razorpay.Client(auth=(settings.RAZOR_KEY_ID, settings.RAZOR_KEY_SECRET))
             payment = client.payment.fetch(payment_id)
 
+           # Check if payment is captured
+           
             if payment['status'] == 'captured':
                 order.payment_status = True
                 order.save()
-                #user = request.user
-                #user.cart.cartitem_set.all().delete()
+                user = request.user
+                user.cart.cartitem_set.all().delete()
                 return JsonResponse({'message': 'Payment successful'})
             else:
                 return JsonResponse({'message': 'Payment failed'})
 
+
         except ProductOrder.DoesNotExist:
+            # Order not found, return invalid order ID message
             return JsonResponse({'message': 'Invalid Order ID'})
         except Exception as e:
-
-            print(str(e))
+            # Handle other exceptions
             return JsonResponse({'message': 'Server error, please try again later.'})
-
 
 def update_address(request):
     if request.method == 'POST':
@@ -2267,3 +2285,253 @@ def update_delivery_address(request):
         return redirect('update_delivery_address_page')
     else:
         return redirect('update_delivery_address_page')
+
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from .models import DeliveryBoys
+
+@login_required
+def add_delivery_boy(request):
+    if request.method == 'POST':
+        profile_photo = request.FILES.get('profile_photo')
+        identity_proof = request.FILES.get('identity_proof')
+        driving_license = request.FILES.get('driving_license')
+
+        delivery_boy = DeliveryBoys.objects.create(
+            user=request.user,
+            profile_photo=profile_photo,
+            identity_proof=identity_proof,
+            driving_license=driving_license
+        )
+        # Perform any additional actions after saving delivery boy details
+        return redirect('deliveryboydashboard')
+    return render(request, 'add_delivery_boy.html')
+
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from .models import DeliveryBoyAddress, City, District
+
+@login_required
+def add_delivery_boy_address(request):
+    if request.method == 'POST':
+        # Retrieve form data from POST request
+        phone_number = request.POST.get('phone_number')
+        pincode = request.POST.get('pincode')
+        locality = request.POST.get('locality')
+        address = request.POST.get('address')
+        city_id = request.POST.get('city')  # Get city ID from POST data
+        district_id = request.POST.get('district')  # Get district ID from POST data
+        landmark = request.POST.get('landmark')
+        alternate_phone_number = request.POST.get('alternate_phone_number')
+       
+        city = City.objects.get(City_ID=city_id)  # Retrieve city using correct primary key field
+        district = District.objects.get(district_id=district_id)  # Retrieve district using district ID
+
+        # Create new delivery boy address
+        DeliveryBoyAddress.objects.create(
+            user=request.user,
+            phone_number=phone_number,
+            pincode=pincode,
+            locality=locality,
+            address=address,
+            city=city,
+            district=district,
+            landmark=landmark,
+            alternate_phone_number=alternate_phone_number
+        )
+
+        # Redirect to a success page or perform any other action
+        return redirect('deliveryboydashboard')
+
+    cities = City.objects.all()
+    districts = District.objects.all()
+
+    return render(request, 'add_delivery_boy_address.html', {'cities': cities, 'districts': districts})
+from django.shortcuts import render
+from .models import DeliveryBoyAddress
+
+def delivery_boy_address(request):
+    # Fetch the last updated delivery boy address associated with the logged-in user
+    delivery_boy_address = DeliveryBoyAddress.objects.filter(user=request.user).order_by('-id').first()
+    
+    # Pass the delivery boy address to the template
+    return render(request, 'delivery_boy_address.html', {'delivery_boy_address': delivery_boy_address})
+def order_status(request):
+    # Retrieve all orders from the database
+    orders = ProductOrder.objects.all()
+
+    # Iterate through each order and set the status based on payment_status
+    for order in orders:
+        if order.payment_status:
+            order.status = "Paid"
+        else:
+            order.status = "Unpaid"
+
+    # Pass the orders to the template for rendering
+    return render(request, 'order_status.html', {'orders': orders})
+
+
+# views.py
+
+# views.py
+
+
+from django.shortcuts import render
+
+def climate_change_news(request):
+    url = "https://newsapi90.p.rapidapi.com/search"
+    querystring = {"region":"US"}
+    headers = {
+        "X-RapidAPI-Key": "d72e5c13d8msh2976b2746f25a10p1d24cbjsn0e3b95c9ec16",
+        "X-RapidAPI-Host": "newsapi90.p.rapidapi.com"
+    }
+
+    response = requests.get(url, headers=headers, params=querystring)
+    data = response.json()
+
+    articles = data.get('articles', [])
+
+    return render(request, 'climate_change_news.html', {'articles': articles})
+
+
+from django.shortcuts import render
+from .models import ProductOrder
+
+def view_receipt(request, order_id):
+    try:
+        # Retrieve the ProductOrder object based on the order_id
+        order = ProductOrder.objects.get(id=order_id)
+        
+        # Render the receipt template with context data
+        return render(request, 'receipt.html', {'order': order})
+
+    except ProductOrder.DoesNotExist:
+        # Order not found, handle accordingly (e.g., display error message)
+        return render(request, 'receipt_not_found.html')
+# views.py
+
+# views.py
+
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from .models import ProductOrder
+
+@login_required
+def my_orders(request):
+    # Retrieve all orders for the logged-in user with related product information
+    orders = ProductOrder.objects.filter(user=request.user).prefetch_related('orderitem_set__product')
+    context = {
+        'orders': orders
+    }
+    return render(request, 'my_orders.html', context)
+
+
+
+# views.py
+
+from django.shortcuts import redirect, render, get_object_or_404
+from .models import ProductOrder
+
+def cancel_order(request, order_id):
+    order = get_object_or_404(ProductOrder, id=order_id)
+    
+    if request.method == 'POST':
+        # Perform cancellation logic here
+        order.payment_status = False  # Set payment status to False (pending)
+        order.save()
+        return redirect('my_orders')  # Redirect to the user's orders page
+    else:
+        return render(request, 'cancel_order_confirmation.html', {'order': order})
+    
+# from django.shortcuts import render
+# from .models import ProductOrder
+
+# def order_details(request):
+#     orders = ProductOrder.objects.all()
+#     return render(request, 'order_details.html', {'orders': orders})
+    
+    # views.py
+
+from django.shortcuts import render, get_object_or_404
+from .models import ProductOrder, DeliveryBoyAddress
+
+from django.shortcuts import render
+from .models import Order, DeliveryBoy
+
+from django.shortcuts import render
+from .models import ProductOrder
+
+def order_details(request):
+    orders = ProductOrder.objects.all()
+    return render(request, 'order_details.html', {'orders': orders})
+
+
+def delivery_boys_list(request):
+    delivery_boys = DeliveryBoyAddress.objects.all()
+    return render(request, 'delivery_boys_list.html', {'delivery_boys': delivery_boys})
+
+# views.py
+
+from django.shortcuts import render, redirect, get_object_or_404
+from .models import ProductOrder, DeliveryBoyAddress
+
+def assign_delivery_boy(request, order_id):
+    order = Order.objects.get(pk=order_id)
+    delivery_boys = DeliveryBoy.objects.filter(district=order.delivery_address.district)
+    return render(request, 'assign_delivery_boy.html', {'order': order, 'delivery_boys': delivery_boys})
+
+
+def get_delivery_boys_for_order(request):
+    if request.method == 'POST':
+        order_id = request.POST.get('order_id')
+        try:
+            order = get_object_or_404(ProductOrder, id=order_id)
+            user_delivery_address = DeliveryAddress.objects.filter(user=order.user).last()
+            if user_delivery_address:
+                user_district = user_delivery_address.district
+                # Filter delivery boys based on the district
+                delivery_boys = DeliveryBoyAddress.objects.filter(district=user_district)
+                return render(request, 'available_deliveryboy.html', {'delivery_boys': delivery_boys, 'order': order})
+            else:
+                # Handle case where user doesn't have a delivery address
+                return render(request, 'no_delivery_address.html')
+        except ProductOrder.DoesNotExist:
+            return render(request, 'order_not_found.html')
+    else:
+        # Handle GET request if needed
+        return None
+    
+
+from django.utils import timezone
+
+def assign_order_to_delivery_boy(request, delivery_boy_id, order_id):
+    # Retrieve the delivery boy and order objects
+    delivery_boy = get_object_or_404(DeliveryBoyAddress, pk=delivery_boy_id)
+    order = get_object_or_404(ProductOrder, pk=order_id)
+
+    # Create a DeliveryBoyAssignment instance with the current date and save it
+    assignment = DeliveryBoyAssignment.objects.create(
+        delivery_boy=delivery_boy.user,
+        order=order,
+        status='PENDING',  # You can set the initial status here
+        date=timezone.now()  # Use timezone.now() to get the current date and time
+    )
+
+    # Redirect back to the page where the order details are displayed
+    return redirect('order_details')
+
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from .models import DeliveryBoyAssignment, DeliveryAddress
+
+@login_required
+
+
+
+def delivery_orders(request):
+    # Fetch orders assigned to the logged-in delivery boy
+    delivery_boy_orders = DeliveryBoyAssignment.objects.filter(delivery_boy=request.user)
+    # client=delivery_boy_orders.order.user.id
+    # address=DeliveryAddress.objects.filter(user=client)
+    # Pass the fetched orders to the template for rendering
+    return render(request, 'delivery_orders.html', {'delivery_boy_orders': delivery_boy_orders,})
